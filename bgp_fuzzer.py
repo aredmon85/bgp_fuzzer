@@ -18,7 +18,7 @@ if args.peer_ip and args.local_ip:
 
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((PEER_IP,PORT))
-        ASN = 64701
+        ASN = 64513
         VERSION = 4
         HOLDTIME = 9
         BGP_ID = int(ipaddress.IPv4Address(unicode(args.local_ip)))
@@ -60,7 +60,7 @@ if args.peer_ip and args.local_ip:
         PATH_ATTRIBUTE_ORIGIN = struct.pack('!BBBB',64,1,1,0)
 
         #Segment Type (8b), Segment Length (8b), AS4 (32b) * number of AS's
-        AS_PATH_SEGMENT = struct.pack('!BBIIIII',2,5,64706,64709,64704,64706,64701)
+        AS_PATH_SEGMENT = struct.pack('!BBIIIII',2,5,ASN,64709,64704,64706,64701)
 
         #Flags (16b), Type (8b), Length (8b), Next Hop (32b)
         PATH_ATTRIBUTE_NEXT_HOP = struct.pack('!BBBI',64,3,4,LOCAL_IP_INTEGER)
@@ -73,7 +73,7 @@ if args.peer_ip and args.local_ip:
         #Prefix length (8b), Prefix (32b)
         NETWORK_LAYER_REACHABILITY = struct.pack('!B',16)
 
-        #BEWARE - Mask length determines the field length - FRUSTRATING - 1820 = 7.28.0.0
+        #BEWARE - Mask length determines the field length - FRUSTRATING - 1820 = 7.28.0.0 - need to add bit shifting here based on mask
         NETWORK_LAYER_REACHABILITY += struct.pack('!H',1820)
         UPDATE = PATH_ATTRIBUTE + NETWORK_LAYER_REACHABILITY
 
@@ -84,11 +84,10 @@ if args.peer_ip and args.local_ip:
         UPDATE_IP4_EOR = MARKER + struct.pack('!HBHH',23,2,0,0)
         UPDATE_FLOW_SPEC_EOR = MARKER + struct.pack('!HBHHBBHHB',30,2,0,7,144,15,3,1,133)
 
-        s.send(KEEPALIVE_MESSAGE + UPDATE_MESSAGE + UPDATE_IP4_EOR + UPDATE_FLOW_SPEC_EOR)
+        s.send(KEEPALIVE_MESSAGE + UPDATE_MESSAGE + UPDATE_IP4_EOR)
 
         keepalive_last_sent = time.time()
         update_last_sent = time.time()
-        #s.send(KEEPALIVE_MESSAGE + UPDATE_IP4_EOR)
         long_active = True
         short_active = False
         while True:
@@ -97,40 +96,39 @@ if args.peer_ip and args.local_ip:
             if now - keepalive_last_sent > 3:
                 s.send(KEEPALIVE_MESSAGE)
                 keepalive_last_sent = time.time()
-            if now - update_last_sent > 2:
-                if long_active == True:
-                    PATH_ATTRIBUTE_ORIGIN = struct.pack('!BBBB',64,1,1,0)
-                    AS_PATH_SEGMENT = struct.pack('!BBIIII',2,4,64706,64704,64706,64701)
-                    PATH_ATTRIBUTE_NEXT_HOP = struct.pack('!BBBI',64,3,4,LOCAL_IP_INTEGER)
-                    PATH_ATTRIBUTE_AS_PATH = struct.pack('!BBB',64,2,len(AS_PATH_SEGMENT))
-                    PATH_ATTRIBUTE = PATH_ATTRIBUTE_ORIGIN + PATH_ATTRIBUTE_AS_PATH + AS_PATH_SEGMENT + PATH_ATTRIBUTE_NEXT_HOP
-                    NETWORK_LAYER_REACHABILITY = struct.pack('!B',16)
-                    NETWORK_LAYER_REACHABILITY += struct.pack('!H',1820)
-                    UPDATE = PATH_ATTRIBUTE + NETWORK_LAYER_REACHABILITY
-                    UPDATE_LEN = len(UPDATE) + len(MARKER) + 2 + 1 + 2 + 2
-                    UPDATE_MESSAGE = MARKER + struct.pack('!HBHH',UPDATE_LEN,2,0,len(PATH_ATTRIBUTE)) + UPDATE
-                    print("Sending shorter AS Path")
-                    s.send(UPDATE_MESSAGE)
-                    long_active = False
-                    short_active = True
-                    update_last_sent = time.time()
-                    continue
-                if short_active == True:
-                    PATH_ATTRIBUTE_ORIGIN = struct.pack('!BBBB',64,1,1,0)
-                    AS_PATH_SEGMENT = struct.pack('!BBIIIII',2,5,64706,64709,64704,64706,64701)
-                    PATH_ATTRIBUTE_NEXT_HOP = struct.pack('!BBBI',64,3,4,LOCAL_IP_INTEGER)
-                    PATH_ATTRIBUTE_AS_PATH = struct.pack('!BBB',64,2,len(AS_PATH_SEGMENT))
-                    PATH_ATTRIBUTE = PATH_ATTRIBUTE_ORIGIN + PATH_ATTRIBUTE_AS_PATH + AS_PATH_SEGMENT + PATH_ATTRIBUTE_NEXT_HOP
-                    NETWORK_LAYER_REACHABILITY = struct.pack('!B',16)
-                    NETWORK_LAYER_REACHABILITY += struct.pack('!H',1820)
-                    UPDATE = PATH_ATTRIBUTE + NETWORK_LAYER_REACHABILITY
-                    UPDATE_LEN = len(UPDATE) + len(MARKER) + 2 + 1 + 2 + 2
-                    UPDATE_MESSAGE = MARKER + struct.pack('!HBHH',UPDATE_LEN,2,0,len(PATH_ATTRIBUTE)) + UPDATE
-                    print("Sending longer AS Path")
-                    s.send(UPDATE_MESSAGE)
-                    long_active = True
-                    short_active = False
-                    update_last_sent = time.time()
-                    continue
+            if long_active == True:
+                PATH_ATTRIBUTE_ORIGIN = struct.pack('!BBBB',64,1,1,0)
+                AS_PATH_SEGMENT = struct.pack('!BBIIII',2,4,ASN,64704,64706,64701)
+                PATH_ATTRIBUTE_NEXT_HOP = struct.pack('!BBBI',64,3,4,LOCAL_IP_INTEGER)
+                PATH_ATTRIBUTE_AS_PATH = struct.pack('!BBB',64,2,len(AS_PATH_SEGMENT))
+                PATH_ATTRIBUTE = PATH_ATTRIBUTE_ORIGIN + PATH_ATTRIBUTE_AS_PATH + AS_PATH_SEGMENT + PATH_ATTRIBUTE_NEXT_HOP
+                NETWORK_LAYER_REACHABILITY = struct.pack('!B',16)
+                NETWORK_LAYER_REACHABILITY += struct.pack('!H',1820)
+                UPDATE = PATH_ATTRIBUTE + NETWORK_LAYER_REACHABILITY
+                UPDATE_LEN = len(UPDATE) + len(MARKER) + 2 + 1 + 2 + 2
+                UPDATE_MESSAGE = MARKER + struct.pack('!HBHH',UPDATE_LEN,2,0,len(PATH_ATTRIBUTE)) + UPDATE
+                print("Sending shorter AS Path")
+                s.send(UPDATE_MESSAGE)
+                long_active = False
+                short_active = True
+                update_last_sent = time.time()
+                continue
+            if short_active == True:
+                PATH_ATTRIBUTE_ORIGIN = struct.pack('!BBBB',64,1,1,0)
+                AS_PATH_SEGMENT = struct.pack('!BBIIIII',2,5,ASN,64709,64704,64706,64701)
+                PATH_ATTRIBUTE_NEXT_HOP = struct.pack('!BBBI',64,3,4,LOCAL_IP_INTEGER)
+                PATH_ATTRIBUTE_AS_PATH = struct.pack('!BBB',64,2,len(AS_PATH_SEGMENT))
+                PATH_ATTRIBUTE = PATH_ATTRIBUTE_ORIGIN + PATH_ATTRIBUTE_AS_PATH + AS_PATH_SEGMENT + PATH_ATTRIBUTE_NEXT_HOP
+                NETWORK_LAYER_REACHABILITY = struct.pack('!B',16)
+                NETWORK_LAYER_REACHABILITY += struct.pack('!H',1820)
+                UPDATE = PATH_ATTRIBUTE + NETWORK_LAYER_REACHABILITY
+                UPDATE_LEN = len(UPDATE) + len(MARKER) + 2 + 1 + 2 + 2
+                UPDATE_MESSAGE = MARKER + struct.pack('!HBHH',UPDATE_LEN,2,0,len(PATH_ATTRIBUTE)) + UPDATE
+                print("Sending longer AS Path")
+                s.send(UPDATE_MESSAGE)
+                long_active = True
+                short_active = False
+                update_last_sent = time.time()
+                continue
 else:
     print("Please provide --peer_ip and --local_ip")
